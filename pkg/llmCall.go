@@ -13,7 +13,7 @@ import (
 type LLMConfig struct {
 	APIKey  string
 	BaseURL string
-	Model  string
+	Model   string
 }
 
 // LLMClient wraps langchaingo LLM for MiniMax API
@@ -70,9 +70,9 @@ func (l *LLMClient) GetModel() string {
 	return l.model
 }
 
-// InitLLM initializes the global LLM client from environment
+// InitLLM initializes the global LLM client from environment or config file
 func InitLLM() (*LLMClient, error) {
-	apiKey := os.Getenv("MINIMAX_API_KEY")
+	apiKey := GetMinimaxAPIKey()
 	if apiKey == "" {
 		return nil, fmt.Errorf("MINIMAX_API_KEY is not set")
 	}

@@ -13,7 +13,10 @@ func main() {
 	log.Println("========================================")
 	log.Println("Server starting...")
 
-	// Initialize RAG from Notion using langchaingo
+	if err := pkg.LoadConfig(); err != nil {
+		log.Printf("[WARNING] Failed to load config: %v", err)
+	}
+
 	rag, ragErr := pkg.InitFromEnv()
 	if ragErr != nil {
 		log.Printf("[WARNING] Failed to initialize RAG: %v", ragErr)
@@ -21,19 +24,16 @@ func main() {
 		log.Printf("[INFO] RAG initialized with %d pages", rag.GetPageCount())
 	}
 
-	// Initialize LLM client using langchaingo
 	llmClient, llmErr := pkg.InitLLM()
 	if llmErr != nil {
 		log.Fatalf("[ERROR] Failed to initialize LLM client: %v", llmErr)
 	}
 	log.Printf("[INFO] LLM initialized with model: %s", llmClient.GetModel())
 
-	// Set LLM client to RAG
 	if rag != nil {
 		rag.SetLLMClient(llmClient)
 	}
 
-	// HTTP handlers
 	fs := http.FileServer(http.Dir("./frontend"))
 	http.Handle("/", fs)
 	http.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
@@ -80,15 +80,14 @@ func handleChat(w http.ResponseWriter, r *http.Request, rag *pkg.NotionRAG, llm 
 
 	ctx := context.Background()
 
-	// Use RAG to query with langchaingo
 	var answer string
 	var queryErr error
-	
+
 	if rag != nil {
 		answer, queryErr = rag.Query(ctx, req.Message)
+		log.Printf("rag get answer: %s", answer)
 		if queryErr != nil {
 			log.Printf("[ERROR] RAG query failed: %v", queryErr)
-			// Fallback to direct LLM call
 			answer, queryErr = llm.Call(ctx, req.Message)
 			if queryErr != nil {
 				log.Printf("[ERROR] LLM call failed: %v", queryErr)
@@ -97,7 +96,6 @@ func handleChat(w http.ResponseWriter, r *http.Request, rag *pkg.NotionRAG, llm 
 			}
 		}
 	} else {
-		// Direct LLM call
 		answer, queryErr = llm.Call(ctx, req.Message)
 		if queryErr != nil {
 			log.Printf("[ERROR] LLM call failed: %v", queryErr)
