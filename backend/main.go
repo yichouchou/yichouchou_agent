@@ -95,6 +95,8 @@ func main() {
 	logger.Println("Server starting...")
 
 	apiKey := os.Getenv("MINIMAX_API_KEY")
+	apiKey = "sk-cp--v1U6wZ5aOl47jOPfaXsKW6nxPfRs6WC4opIrKbw2QqR7_Rd8K-ZR_h9bALRmMDRWFTHTRl6Gf_MVaVdQxZQ7RB1FfQE1nBhDogNEiVZJR5vpzUNvsjUHMo"
+
 	if apiKey == "" {
 		logger.Fatal("[ERROR] MINIMAX_API_KEY is not set")
 	}
