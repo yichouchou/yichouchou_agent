@@ -1,103 +1,87 @@
 package pkg
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"strings"
+	"os"
+
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
+// LLMConfig holds LLM configuration
 type LLMConfig struct {
 	APIKey  string
 	BaseURL string
-	Model   string
+	Model  string
 }
 
-var LlmConfig LLMConfig
+// LLMClient wraps langchaingo LLM for MiniMax API
+type LLMClient struct {
+	client llms.LLM
+	model  string
+}
 
-func CallMiniMaxAPI(message string, config LLMConfig) (string, error) {
-	type Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
+// NewLLMClient creates a new LLM client using langchaingo
+func NewLLMClient(apiKey, baseURL, model string) (*LLMClient, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("API key is required")
 	}
 
-	type MiniMaxRequest struct {
-		Model       string    `json:"model"`
-		Messages    []Message `json:"messages"`
-		Temperature float64   `json:"temperature"`
+	if baseURL == "" {
+		baseURL = "https://api.minimax.chat/v1"
 	}
 
-	type Choice struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
+	if model == "" {
+		model = "MiniMax-M2.7"
 	}
 
-	type MiniMaxResponse struct {
-		Choices []Choice `json:"choices"`
-		Error   *struct {
-			Message string `json:"message"`
-		} `json:"error,omitempty"`
-	}
-
-	apiURL := fmt.Sprintf("%s/text/chatcompletion_v2", strings.TrimSuffix(config.BaseURL, "/"))
-
-	reqBody := MiniMaxRequest{
-		Model: config.Model,
-		Messages: []Message{
-			{Role: "user", Content: message},
-		},
-		Temperature: 0.7,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
+	client, err := openai.New(
+		openai.WithToken(apiKey),
+		openai.WithBaseURL(baseURL),
+		openai.WithModel(model),
+	)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to create LLM client: %w", err)
 	}
 
-	log.Printf("[DEBUG] Calling MiniMax API: %s", apiURL)
+	return &LLMClient{
+		client: client,
+		model:  model,
+	}, nil
+}
 
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+// Call sends a prompt to the LLM and returns the response using langchaingo
+func (l *LLMClient) Call(ctx context.Context, prompt string) (string, error) {
+	return l.client.Call(ctx, prompt)
+}
+
+// CallWithContext sends a prompt with custom context using langchaingo
+func (l *LLMClient) CallWithContext(ctx context.Context, prompt string, context string) (string, error) {
+	fullPrompt := prompt
+	if context != "" {
+		fullPrompt = fmt.Sprintf("请根据以下知识库内容回答问题。\n\n知识库内容:\n%s\n\n用户问题: %s", context, prompt)
+	}
+	return l.client.Call(ctx, fullPrompt)
+}
+
+// GetModel returns the model name
+func (l *LLMClient) GetModel() string {
+	return l.model
+}
+
+// InitLLM initializes the global LLM client from environment
+func InitLLM() (*LLMClient, error) {
+	apiKey := os.Getenv("MINIMAX_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("MINIMAX_API_KEY is not set")
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+config.APIKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+	baseURL := os.Getenv("MINIMAX_BASE_URL")
+	model := os.Getenv("MINIMAX_MODEL")
+	if model == "" {
+		model = "MiniMax-M2.7"
 	}
 
-	log.Printf("[DEBUG] Response status: %d", resp.StatusCode)
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var miniResp MiniMaxResponse
-	if err := json.Unmarshal(body, &miniResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if miniResp.Error != nil {
-		return "", fmt.Errorf("MiniMax API error: %s", miniResp.Error.Message)
-	}
-
-	if len(miniResp.Choices) == 0 {
-		return "", fmt.Errorf("empty response from API")
-	}
-
-	return miniResp.Choices[0].Message.Content, nil
+	return NewLLMClient(apiKey, baseURL, model)
 }
