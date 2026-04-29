@@ -9,3 +9,83 @@ The user says "hello". As the assistant, respond with greeting and ask how can h
 </think>
 
 Hello! How can I help you today?
+2026/04/29 11:11:12 main.go:94: ========================================
+2026/04/29 11:11:12 main.go:95: Server starting...
+2026/04/29 11:11:12 main.go:99: [ERROR] MINIMAX_API_KEY is not set
+2026/04/29 11:11:24 main.go:94: ========================================
+2026/04/29 11:11:24 main.go:95: Server starting...
+2026/04/29 11:11:24 main.go:119: [INFO] LLM initialized with model: MiniMax-M2.7
+2026/04/29 11:11:24 main.go:125: [INFO] Server starting on :8080
+2026/04/29 11:11:24 main.go:126: ========================================
+2026/04/29 11:11:40 main.go:71: [INPUT] Message: 2026年上海五一期间天气如何
+2026/04/29 11:14:19 main.go:94: ========================================
+2026/04/29 11:14:19 main.go:95: Server starting...
+2026/04/29 11:14:19 main.go:119: [INFO] LLM initialized with model: MiniMax-M2.7
+2026/04/29 11:14:19 main.go:125: [INFO] Server starting on :8080
+2026/04/29 11:14:19 main.go:126: ========================================
+2026/04/29 11:14:28 main.go:71: [INPUT] Message: 2026年上海五一期间天气如何
+2026/04/29 11:15:15 main.go:82: [OUTPUT] Response: <think>
+The user asks: "2026年上海五一期间天气如何". They are asking about weather in Shanghai during the May Day (Labor Day) period in 2026. They want a weather forecast. The current date is 2026-01-25, so it's currently January 2026. They are asking about the weather during the 2026 May Day holiday, which would be early May (May 1st). As an AI language model, my knowledge cutoff is 2024-06, but I can try to provide a plausible average weather typical for Shanghai in early May, referencing historical averages and typical patterns. However, the user is asking specifically for 2026 forecast. Since I cannot access real-time data or forecasts beyond my knowledge cutoff, I can explain that I cannot provide a precise forecast for 2026, but I can give historical normals, typical weather patterns, and maybe suggestions on checking reliable weather services for up-to-date forecasts.
+
+We need to follow policy: Provide the answer in Chinese. This is not disallowed. It's a location-based request for weather forecast for a future date. It's permissible. According to policy, for location-based request for future weather beyond 7 days, we must provide "I don't have access to real-time or future weather forecasts. However, I can provide typical climate averages." That is allowed. So we can comply.
+
+We need to also avoid hallucinating precise forecasts. Use typical climate data for Shanghai in early May: average high temperature around 23°C, low around 15°C, chance of rain maybe 30-40%, occasional thunderstorms. Also mention that May Day holiday often experiences warm days, but occasional rain.
+
+We can also give suggestions to check Chinese weather services like China Meteorological Administration (CMA), or some apps.
+
+We can also note that Shanghai's weather in early May is transitional from spring to early summer.
+
+Also, note the holiday period is typically 3 days (May 1-3), maybe extended to a week depending on arrangement.
+
+Now we must respond accordingly. Also ensure no policy violation: we are not providing disallowed content. The user wants weather info for a future date. Provide general info and advise to consult reliable forecast sources. It's allowed. We'll respond in Chinese. Also keep in mind not to mention policy. Provide a helpful answer.
+
+Ok.
+
+Now let's compose the answer. We'll provide typical weather stats: average temperature, historical rainfall, typical weather patterns. Also mention typical weather in Shanghai in early May: mild, occasional rain, some humidity, possible thunderstorms. Use Chinese units (摄氏度). Also mention daylight length: around 13-14 hours.
+
+Additionally, we can advise checking the China Meteorological Administration's website or local apps like "天气通" for the most up-to-date forecast. Provide a suggestion for how to plan: bring light layers, umbrella, etc.
+
+We can also mention any typical extreme events historically: occasional heatwaves or cold snaps, but not common.
+
+Ok, let's produce answer.
+</think>
+
+**2026年上海五一期间的天气（5月1日–5月3日）**  
+> 由于我无法获取实时或超长期的气象预测，以下信息基于上海历年（五一前后）的气候均值和常见天气特征，供您作参考。具体预报请在临近假期时查询权威气象机构（如中国气象局、上海市气象局）发布的最新预报。
+
+| 项目 | 历年平均值/常见情况（5月1日–5月3日） |
+|------|-----------------------------------|
+| **最高气温** | 22 °C ~ 26 °C（白天温暖舒适） |
+| **最低气温** | 15 °C ~ 18 °C（早晚稍凉） |
+| **降水概率** | 30 % ~ 45 %（有小到中雨的可能，阴天或局部阵雨） |
+| **常见天气** | 多云、局部阵雨或雷雨，偶尔出现阳光明媚的晴朗天 |
+| **相对湿度** | 65 % ~ 80 %（空气较为湿润，体感略闷） |
+| **风速** | 2 ~ 4 级（轻柔的东南或东风） |
+| **日照时长** | 约13 ~ 14 小时（白天较长，早晚温差不大） |
+
+### 1. 气候特点
+- **季节过渡**：五一正值春季向夏季过渡的阶段，气温整体回升，但仍可能出现**倒春寒**的短时降温，尤其在夜间或降雨后。
+- **降雨模式**：受西南暖湿气流和北方冷空气交汇影响，**雨天出现概率较高**，常伴随局部雷阵雨。建议随身携带雨具。
+- **空气质量**：春季干燥、风大时，空气质量总体良好；但在降雨前后，湿度升高、污染物不易扩散，可能出现轻度雾霾。
+
+### 2. 出行/活动建议
+| 场景 | 建议 |
+|------|------|
+| **户外游玩（如外滩、豫园、田子坊）** | 轻便的长袖或短袖上衣+薄外套或防风夹克；备一把折叠伞或雨衣。 |
+| **亲子/家庭活动** | 考虑到可能的阵雨，选择室内景点（如上海博物馆、上海科技馆）或提前关注天气预报，做好防雨准备。 |
+| **摄影/观光** | 早晨或傍晚光线柔和，适合拍摄；雨后空气清新，能见度好。 |
+| **穿着** | 建议穿着**透气、速干的衣物**，配合**薄款防风外套**或**针织开衫**，方便随时增减。 |
+| **注意事项** | 1. 关注当天实时天气更新（可使用“天气通”、中国气象局官网、12379短信查询）。<br>2. 若有雷电预警，请尽量避免在空旷场地或高大建筑下逗留。<br>3. 雨季道路湿滑，行车或步行时注意防滑。 |
+
+### 3. 如何获取更精准的预报
+1. **中国气象局（CMA）**：<https://www.cma.gov.cn> → “天气预报” → 选择“上海市”。  
+2. **上海市气象局**：<http://www.smb.gov.cn>（实时更新，提供小时级预报）。  
+3. **常用天气 App**：如“墨迹天气”“天气通”“腾讯天气”等，支持未来7–10天的趋势预报。  
+4. **临近假期（4月30日–5月1日）**：此时的气象模型已能提供较为可靠的 **48‑72 小时预报**，建议在出行前一天再确认一次。
+
+### 4. 小贴士
+- **提前规划**：如果行程涉及户外活动，可将**雨天备选**（如博物馆、商场、室内演艺）列入计划。  
+- **携带防雨装备**：折叠伞、轻便雨衣或防泼水的背包能让你在突如其来的阵雨中保持舒适。  
+- **注意防晒**：即使有云，紫外线仍然较强，长时间在户外可适当使用防晒霜或戴帽子。  
+
+祝您在2026年五一假期玩得开心，天气顺利！如果还有其他关于上海行程或生活的问题，随时来聊。
