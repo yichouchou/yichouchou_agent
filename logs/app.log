@@ -1,0 +1,11 @@
+2026/04/29 10:21:09 main.go:94: ========================================
+2026/04/29 10:21:09 main.go:95: Server starting...
+2026/04/29 10:21:09 main.go:117: [INFO] LLM initialized with model: MiniMax-M2.7
+2026/04/29 10:21:09 main.go:123: [INFO] Server starting on :8080
+2026/04/29 10:21:09 main.go:124: ========================================
+2026/04/29 10:21:31 main.go:71: [INPUT] Message: hello
+2026/04/29 10:21:33 main.go:82: [OUTPUT] Response: <think>
+The user says "hello". As the assistant, respond with greeting and ask how can help.
+</think>
+
+Hello! How can I help you today?
