@@ -1,0 +1,42 @@
+# Logs
+logs/
+*.log
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Go workspace
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+temp_task.txt
+*.tmp
+*.temp
+
+# Build outputs
+backend.exe
+temp_*
+
+# Environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
