@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tmc/langchaingo/schema"
+	"github.com/yichouchou/yichouchou_agent/conf"
 )
 
 type NotionRAG struct {
@@ -30,7 +31,7 @@ func InitFromEnv() (*NotionRAG, error) {
 		return nil, err
 	}
 
-	notionKey := GetNotionAPIKey()
+	notionKey := conf.GetNotionAPIKey()
 	if notionKey == "" {
 		return nil, fmt.Errorf("Notion API key is not set")
 	}
@@ -125,13 +126,47 @@ type RichText struct {
 }
 
 type Block struct {
-	Type      string `json:"type"`
-	Paragraph struct {
+	Object      string `json:"object"`
+	Type        string `json:"type"`
+	ID          string `json:"id"`
+	HasChildren bool   `json:"has_children"`
+	Paragraph   struct {
 		RichText []RichText `json:"rich_text"`
 	} `json:"paragraph"`
 	ChildPage struct {
 		Title string `json:"title"`
 	} `json:"child_page"`
+	Heading1 struct {
+		RichText []RichText `json:"rich_text"`
+	} `json:"heading_1"`
+	Heading2 struct {
+		RichText []RichText `json:"rich_text"`
+	} `json:"heading_2"`
+	Heading3 struct {
+		RichText []RichText `json:"rich_text"`
+	} `json:"heading_3"`
+	BulletedListItem struct {
+		RichText []RichText `json:"rich_text"`
+	} `json:"bulleted_list_item"`
+	NumberedListItem struct {
+		RichText []RichText `json:"rich_text"`
+	} `json:"numbered_list_item"`
+	Quote struct {
+		RichText []RichText `json:"rich_text"`
+	} `json:"quote"`
+	Code struct {
+		RichText []RichText `json:"rich_text"`
+		Language string     `json:"language"`
+	} `json:"code"`
+	Table struct {
+		TableWidth int `json:"table_width"`
+	} `json:"table"`
+	TableRow struct {
+		Cells [][]RichText `json:"cells"`
+	} `json:"table_row"`
+	TableHeader struct {
+		Cells [][]RichText `json:"cells"`
+	} `json:"table_header"`
 }
 
 type NotionResponse struct {
@@ -170,31 +205,10 @@ func fetchNotionPageAsDocument(pageID, apiKey string) (*schema.Document, error) 
 		title = pageData.Properties.Title.Title[0].PlainText
 	}
 
-	blocksReq, _ := http.NewRequest("GET", fmt.Sprintf("https://api.notion.com/v1/blocks/%s/children", pageID), nil)
-	blocksReq.Header.Set("Authorization", "Bearer "+apiKey)
-	blocksReq.Header.Set("Notion-Version", "2025-09-03")
-
-	blocksResp, err := client.Do(blocksReq)
-	if err != nil {
-		return nil, err
-	}
-	defer blocksResp.Body.Close()
-
-	blocksBody, _ := io.ReadAll(blocksResp.Body)
-	var blocksData NotionResponse
-	json.Unmarshal(blocksBody, &blocksData)
-
 	var content strings.Builder
-	for _, block := range blocksData.Results {
-		switch block.Type {
-		case "paragraph":
-			for _, rt := range block.Paragraph.RichText {
-				content.WriteString(rt.PlainText)
-			}
-		case "child_page":
-			content.WriteString(" [子页面: " + block.ChildPage.Title + "] ")
-		}
-		content.WriteString("\n")
+	err = fetchBlockChildren(pageID, apiKey, &content, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch block children: %w", err)
 	}
 
 	return &schema.Document{
@@ -205,6 +219,183 @@ func fetchNotionPageAsDocument(pageID, apiKey string) (*schema.Document, error) 
 			"title":   title,
 		},
 	}, nil
+}
+
+func fetchBlockChildren(blockID, apiKey string, content *strings.Builder, depth int) error {
+	client := &http.Client{}
+	var cursor string
+
+	for {
+		url := fmt.Sprintf("https://api.notion.com/v1/blocks/%s/children", blockID)
+		if cursor != "" {
+			url += "?start_cursor=" + cursor
+		}
+
+		req, _ := http.NewRequest("GET", url, nil)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Notion-Version", "2025-09-03")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var blocksData NotionResponse
+		if err := json.Unmarshal(body, &blocksData); err != nil {
+			return fmt.Errorf("failed to parse blocks: %w", err)
+		}
+
+		isInTable := false
+		for _, block := range blocksData.Results {
+			switch block.Type {
+			case "paragraph":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				for _, rt := range block.Paragraph.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n")
+
+			case "heading_1":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("# ")
+				for _, rt := range block.Heading1.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n")
+
+			case "heading_2":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("## ")
+				for _, rt := range block.Heading2.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n")
+
+			case "heading_3":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("### ")
+				for _, rt := range block.Heading3.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n")
+
+			case "bulleted_list_item":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("- ")
+				for _, rt := range block.BulletedListItem.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n")
+
+			case "numbered_list_item":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("1. ")
+				for _, rt := range block.NumberedListItem.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n")
+
+			case "quote":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("> ")
+				for _, rt := range block.Quote.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n")
+
+			case "code":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("```" + block.Code.Language + "\n")
+				for _, rt := range block.Code.RichText {
+					content.WriteString(rt.PlainText)
+				}
+				content.WriteString("\n```\n")
+
+			case "child_page":
+				if isInTable {
+					content.WriteString("\n")
+					isInTable = false
+				}
+				content.WriteString("[子页面: " + block.ChildPage.Title + "]\n")
+
+			case "table":
+				content.WriteString("【表格开始】\n")
+				isInTable = true
+				if block.HasChildren {
+					err := fetchBlockChildren(block.ID, apiKey, content, depth+1)
+					if err != nil {
+						return err
+					}
+				}
+				content.WriteString("【表格结束】\n")
+				isInTable = false
+
+			case "table_header":
+				isInTable = true
+				for i, cell := range block.TableHeader.Cells {
+					if i > 0 {
+						content.WriteString(" | ")
+					}
+					for _, rt := range cell {
+						content.WriteString(rt.PlainText)
+					}
+				}
+				content.WriteString("\n")
+				for i := 0; i < len(block.TableHeader.Cells); i++ {
+					if i > 0 {
+						content.WriteString("|")
+					}
+					content.WriteString("---")
+				}
+				content.WriteString("\n")
+
+			case "table_row":
+				isInTable = true
+				for i, cell := range block.TableRow.Cells {
+					if i > 0 {
+						content.WriteString(" | ")
+					}
+					for _, rt := range cell {
+						content.WriteString(rt.PlainText)
+					}
+				}
+				content.WriteString("\n")
+			}
+		}
+
+		if !blocksData.HasMore || blocksData.NextCursor == "" {
+			break
+		}
+		cursor = blocksData.NextCursor
+	}
+
+	return nil
 }
 
 func (r *NotionRAG) Search(query string) string {

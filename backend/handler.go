@@ -1,11 +1,12 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
-	"github.com/yichouchou/yichouchou_agent/pkg"
 	"log"
 	"net/http"
+
+	"github.com/yichouchou/yichouchou_agent/pkg"
 )
 
 type ChatRequest struct {
@@ -14,6 +15,14 @@ type ChatRequest struct {
 
 type ChatResponse struct {
 	Response string `json:"response"`
+}
+
+var hybridRAG *pkg.HybridRAG
+var llmClient *pkg.LLMClient
+
+func InitHandler(hybrid *pkg.HybridRAG, llm *pkg.LLMClient) {
+	hybridRAG = hybrid
+	llmClient = llm
 }
 
 func ChatHandler(w http.ResponseWriter, r *http.Request) {
@@ -41,17 +50,11 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[REQUEST] Message: %s", req.Message)
 
-	context := pkg.SearchKnowledge(req.Message)
-	log.Printf("[INFO] Retrieved context length: %d", len(context))
+	ctx := context.Background()
 
-	prompt := req.Message
-	if context != "" {
-		prompt = fmt.Sprintf("请根据以下知识库内容回答问题。\n\n知识库内容:\n%s\n\n用户问题: %s", context, req.Message)
-	}
-
-	answer, err := pkg.CallMiniMaxAPI(prompt, pkg.LlmConfig)
+	answer, err := hybridRAG.Query(ctx, req.Message)
 	if err != nil {
-		log.Printf("[ERROR] LLM call failed: %v", err)
+		log.Printf("[ERROR] RAG query failed: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

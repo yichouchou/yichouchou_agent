@@ -1,0 +1,8 @@
+minimax_apikey:
+
+notion_apikey:
+
+chroma:
+  host: "localhost"
+  port: 8000
+  collection: "yichouchou_knowledge"

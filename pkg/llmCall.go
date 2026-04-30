@@ -3,6 +3,7 @@ package pkg
 import (
 	"context"
 	"fmt"
+	"github.com/yichouchou/yichouchou_agent/conf"
 	"os"
 
 	"github.com/tmc/langchaingo/llms"
@@ -72,7 +73,7 @@ func (l *LLMClient) GetModel() string {
 
 // InitLLM initializes the global LLM client from environment or config file
 func InitLLM() (*LLMClient, error) {
-	apiKey := GetMinimaxAPIKey()
+	apiKey := conf.GetMinimaxAPIKey()
 	if apiKey == "" {
 		return nil, fmt.Errorf("MINIMAX_API_KEY is not set")
 	}
