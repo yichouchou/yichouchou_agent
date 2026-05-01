@@ -1,9 +1,12 @@
 package pkg
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 
 	"github.com/yichouchou/yichouchou_agent/conf"
@@ -112,13 +115,51 @@ func (c *ChromaStore) GetDocumentCount() (int, error) {
 		return 0, fmt.Errorf("Chroma store not initialized")
 	}
 
-	// Chroma doesn't expose count directly through langchaingo
-	// We do a dummy query to check collection exists and count
-	results, err := c.store.SimilaritySearch(context.Background(), "", 1000)
+	// Use Chroma REST API directly for accurate count
+	url := fmt.Sprintf("http://%s:%d/api/v1/collections/%s/count", c.config.Host, c.config.Port, c.config.Collection)
+	resp, err := http.Get(url)
 	if err != nil {
-		return 0, nil // Ignore errors, just return 0
+		return 0, fmt.Errorf("failed to get count from Chroma: %w", err)
 	}
-	return len(results), nil
+	defer resp.Body.Close()
+
+	var result struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to parse count response: %w", err)
+	}
+	return result.Count, nil
+}
+
+// DeleteByMetadata deletes all documents matching a metadata filter
+func (c *ChromaStore) DeleteByMetadata(key, value string) error {
+	if c.store == nil {
+		return fmt.Errorf("Chroma store not initialized")
+	}
+
+	// Chroma doesn't support delete by metadata through langchaingo
+	// Use direct API call
+	url := fmt.Sprintf("http://%s:%d/api/v1/collections/%s/delete", c.config.Host, c.config.Port, c.config.Collection)
+	
+	body := map[string]interface{}{
+		"where": map[string]string{key: value},
+	}
+	jsonBody, _ := json.Marshal(body)
+	
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete by metadata: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("delete returned status: %d", resp.StatusCode)
+	}
+	return nil
 }
 
 type HybridRAG struct {
@@ -217,7 +258,7 @@ func InitHybridRAG() (*HybridRAG, error) {
 		log.Printf("[INFO] Notion RAG initialized with %d documents", notionRAG.GetPageCount())
 	}
 
-	chromaStore, err := InitChromaStore(nil)
+	chromaStore, err := InitChromaStore(llmClient)
 	if err != nil {
 		log.Printf("[WARNING] Failed to initialize Chroma store: %v", err)
 	} else {

@@ -585,7 +585,7 @@ func SyncNotionToChroma(llmClient *LLMClient) (int, error) {
 		log.Printf("[WARNING] Failed to load sync state: %v", err)
 	}
 
-	log.Printf("[INFO] Syncing Notion pages to Chroma (incremental=%v)...", true)
+	log.Printf("[INFO] Syncing Notion pages to Chroma (incremental=true)...")
 	pageIDs, err := searchNotionPages(notionKey)
 	if err != nil {
 		return 0, fmt.Errorf("failed to search Notion pages: %w", err)
@@ -593,21 +593,24 @@ func SyncNotionToChroma(llmClient *LLMClient) (int, error) {
 
 	log.Printf("[INFO] Found %d Notion pages to check", len(pageIDs))
 
-	// Get existing Chroma documents to compare
-	existingDocs, err := chromaStore.GetDocumentCount()
-	if err != nil {
-		log.Printf("[WARNING] Could not get existing doc count: %v", err)
+	// First pass: compute checksums and identify pages to sync
+	type pageSyncInfo struct {
+		pageID   string
+		checksum string
 	}
-
-	// Check each page for changes
-	pagesToSync := make([]string, 0)
+	pagesToSync := make([]pageSyncInfo, 0)
+	
 	for _, pageID := range pageIDs {
 		checksum := computePageChecksum(pageID, notionKey)
+		if checksum == "" {
+			log.Printf("[WARNING] Failed to compute checksum for page %s, will retry", pageID)
+			checksum = "pending" // Force retry on next sync
+		}
 		if shouldSkipDocument(pageID, checksum) {
 			log.Printf("[INFO] Skipping unchanged page: %s", pageID)
 			continue
 		}
-		pagesToSync = append(pagesToSync, pageID)
+		pagesToSync = append(pagesToSync, pageSyncInfo{pageID: pageID, checksum: checksum})
 	}
 
 	if len(pagesToSync) == 0 {
@@ -618,12 +621,17 @@ func SyncNotionToChroma(llmClient *LLMClient) (int, error) {
 	log.Printf("[INFO] %d pages changed, syncing to Chroma...", len(pagesToSync))
 
 	var syncedDocs []schema.Document
-	for _, pageID := range pagesToSync {
-		doc, err := fetchNotionPageAsDocument(pageID, notionKey)
+	for _, info := range pagesToSync {
+		doc, err := fetchNotionPageAsDocument(info.pageID, notionKey)
 		if err != nil {
-			log.Printf("[WARNING] Failed to fetch page %s: %v", pageID, err)
-			syncState.FailedDocuments = append(syncState.FailedDocuments, pageID)
+			log.Printf("[WARNING] Failed to fetch page %s: %v", info.pageID, err)
+			syncState.FailedDocuments = append(syncState.FailedDocuments, info.pageID)
 			continue
+		}
+
+		// Delete existing chunks for this page before adding new ones
+		if err := chromaStore.DeleteByMetadata("page_id", info.pageID); err != nil {
+			log.Printf("[WARNING] Failed to delete old chunks for page %s: %v", info.pageID, err)
 		}
 
 		// Chunk the document content
@@ -634,9 +642,9 @@ func SyncNotionToChroma(llmClient *LLMClient) (int, error) {
 			chunkDoc := schema.Document{
 				PageContent: chunk,
 				Metadata: map[string]interface{}{
-					"source":     "notion",
-					"page_id":    pageID,
-					"title":      doc.Metadata["title"],
+					"source":      "notion",
+					"page_id":     info.pageID,
+					"title":       doc.Metadata["title"],
 					"chunk_index": i,
 					"total_chunks": len(chunks),
 				},
@@ -644,13 +652,12 @@ func SyncNotionToChroma(llmClient *LLMClient) (int, error) {
 			syncedDocs = append(syncedDocs, chunkDoc)
 		}
 
-		// Update sync state
-		checksum := computePageChecksum(pageID, notionKey)
-		syncState.SyncedDocuments[pageID] = checksum
+		// Update sync state with the checksum we already computed
+		syncState.SyncedDocuments[info.pageID] = info.checksum
 		
 		// Remove from failed if it was there
 		for i, id := range syncState.FailedDocuments {
-			if id == pageID {
+			if id == info.pageID {
 				syncState.FailedDocuments = append(syncState.FailedDocuments[:i], syncState.FailedDocuments[i+1:]...)
 				break
 			}
@@ -685,21 +692,31 @@ func computePageChecksum(pageID, apiKey string) string {
 
 	pageResp, err := client.Do(pageReq)
 	if err != nil {
+		log.Printf("[WARNING] Failed to fetch page %s for checksum: %v", pageID, err)
 		return ""
 	}
 	defer pageResp.Body.Close()
 
-	// Get content
-	var content strings.Builder
-	fetchBlockChildren(pageID, apiKey, &content, 0)
-
-	// Combine last_edited + content for checksum
 	pageBody, _ := io.ReadAll(pageResp.Body)
 	var pageData PageResponse
-	json.Unmarshal(pageBody, &pageData)
-	
+	if err := json.Unmarshal(pageBody, &pageData); err != nil {
+		log.Printf("[WARNING] Failed to parse page %s for checksum: %v", pageID, err)
+		return ""
+	}
+
+	// Get content
+	var content strings.Builder
+	if err := fetchBlockChildren(pageID, apiKey, &content, 0); err != nil {
+		log.Printf("[WARNING] Failed to fetch content for %s: %v", pageID, err)
+		return ""
+	}
+
 	lastEdited := pageData.LastEdited
-	
 	checksumInput := lastEdited + content.String()
+	
+	if checksumInput == "" {
+		log.Printf("[WARNING] Empty checksum input for page %s", pageID)
+	}
+	
 	return ComputeChecksum(checksumInput)
 }
