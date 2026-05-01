@@ -570,14 +570,15 @@ func SyncNotionToChroma(llmClient *LLMClient) (int, error) {
 		return 0, fmt.Errorf("Chroma config not found")
 	}
 
-	chromaStore := NewChromaStore(chromaConfig.Host, chromaConfig.Port, chromaConfig.Collection)
-	if err := chromaStore.Connect(llmClient); err != nil {
-		return 0, fmt.Errorf("failed to connect to Chroma: %w", err)
-	}
-
 	notionKey := conf.GetNotionAPIKey()
 	if notionKey == "" {
 		return 0, fmt.Errorf("Notion API key is not set")
+	}
+
+	// Use the new V2 Chroma store with MiniMax embedder
+	chromaStore, err := InitChromaStoreV2(conf.GetMinimaxAPIKey())
+	if err != nil {
+		return 0, fmt.Errorf("failed to initialize Chroma V2: %w", err)
 	}
 
 	// Load sync state
