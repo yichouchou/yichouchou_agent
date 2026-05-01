@@ -8,6 +8,7 @@ import (
 
 	"github.com/yichouchou/yichouchou_agent/conf"
 
+	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/vectorstores"
 	"github.com/tmc/langchaingo/vectorstores/chroma"
@@ -28,12 +29,18 @@ func NewChromaStore(host string, port int, collectionName string) *ChromaStore {
 	}
 }
 
-func (c *ChromaStore) Connect() error {
+func (c *ChromaStore) Connect(llmClient *LLMClient) error {
 	chromaURL := fmt.Sprintf("http://%s:%d", c.config.Host, c.config.Port)
+
+	embedder, err := embeddings.NewEmbedder(llmClient.client)
+	if err != nil {
+		return fmt.Errorf("failed to create embedder: %w", err)
+	}
 
 	store, err := chroma.New(
 		chroma.WithChromaURL(chromaURL),
 		chroma.WithNameSpace(c.config.Collection),
+		chroma.WithEmbedder(embedder),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create Chroma store: %w", err)
@@ -97,6 +104,21 @@ func (c *ChromaStore) AddDocuments(ctx context.Context, docs []schema.Document) 
 	}
 
 	return nil
+}
+
+// GetDocumentCount returns the number of documents in the collection
+func (c *ChromaStore) GetDocumentCount() (int, error) {
+	if c.store == nil {
+		return 0, fmt.Errorf("Chroma store not initialized")
+	}
+
+	// Chroma doesn't expose count directly through langchaingo
+	// We do a dummy query to check collection exists and count
+	results, err := c.store.SimilaritySearch(context.Background(), "", 1000)
+	if err != nil {
+		return 0, nil // Ignore errors, just return 0
+	}
+	return len(results), nil
 }
 
 type HybridRAG struct {
@@ -169,7 +191,7 @@ func (h *HybridRAG) GetSourceCount() (notionCount, chromaCount int) {
 	return
 }
 
-func InitChromaStore() (*ChromaStore, error) {
+func InitChromaStore(llmClient *LLMClient) (*ChromaStore, error) {
 	chromaConfig := conf.GetChromaConfig()
 	if chromaConfig == nil {
 		return nil, fmt.Errorf("Chroma config not found")
@@ -177,7 +199,7 @@ func InitChromaStore() (*ChromaStore, error) {
 
 	chromaStore := NewChromaStore(chromaConfig.Host, chromaConfig.Port, chromaConfig.Collection)
 
-	if err := chromaStore.Connect(); err != nil {
+	if err := chromaStore.Connect(llmClient); err != nil {
 		return nil, fmt.Errorf("failed to connect to Chroma: %w", err)
 	}
 
@@ -195,7 +217,7 @@ func InitHybridRAG() (*HybridRAG, error) {
 		log.Printf("[INFO] Notion RAG initialized with %d documents", notionRAG.GetPageCount())
 	}
 
-	chromaStore, err := InitChromaStore()
+	chromaStore, err := InitChromaStore(nil)
 	if err != nil {
 		log.Printf("[WARNING] Failed to initialize Chroma store: %v", err)
 	} else {

@@ -3,16 +3,85 @@ package pkg
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/tmc/langchaingo/schema"
 	"github.com/yichouchou/yichouchou_agent/conf"
 )
+
+// SyncState tracks synced documents for incremental updates
+type SyncState struct {
+	LastSync          string            `json:"last_sync"`
+	SyncedDocuments   map[string]string `json:"synced_documents"` // pageID -> checksum
+	FailedDocuments   []string          `json:"failed_documents"`
+}
+
+var syncState = &SyncState{
+	SyncedDocuments: make(map[string]string),
+}
+
+// ChunkConfig controls text chunking
+type ChunkConfig struct {
+	ChunkSize    int
+	ChunkOverlap int
+}
+
+var defaultChunkConfig = ChunkConfig{
+	ChunkSize:    500,
+	ChunkOverlap: 50,
+}
+
+// GetSyncStatePath returns the path to the sync state file
+func GetSyncStatePath() string {
+	if path := os.Getenv("SYNC_STATE_FILE"); path != "" {
+		return path
+	}
+	return "notion_sync_state.json"
+}
+
+// LoadSyncState loads sync state from disk
+func LoadSyncState() error {
+	path := GetSyncStatePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // First run, no state file yet
+		}
+		return fmt.Errorf("failed to read sync state: %w", err)
+	}
+	return json.Unmarshal(data, &syncState)
+}
+
+// SaveSyncState persists sync state to disk
+func SaveSyncState() error {
+	path := GetSyncStatePath()
+	data, err := json.MarshalIndent(syncState, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal sync state: %w", err)
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// ComputeChecksum calculates MD5 checksum of content
+func ComputeChecksum(content string) string {
+	hash := md5.Sum([]byte(content))
+	return fmt.Sprintf("%x", hash)
+}
+
+// shouldSkipDocument checks if document has changed since last sync
+func shouldSkipDocument(pageID, checksum string) bool {
+	if existingChecksum, exists := syncState.SyncedDocuments[pageID]; exists {
+		return existingChecksum == checksum
+	}
+	return false
+}
 
 type NotionRAG struct {
 	documents []schema.Document
@@ -176,7 +245,9 @@ type NotionResponse struct {
 }
 
 type PageResponse struct {
-	Properties struct {
+	ID           string `json:"id"`
+	LastEdited   string `json:"last_edited_time"`
+	Properties   struct {
 		Title struct {
 			Title []RichText `json:"title"`
 		} `json:"title"`
@@ -446,4 +517,189 @@ func (r *NotionRAG) GetPageCount() int {
 
 func (r *NotionRAG) GetDocuments() []schema.Document {
 	return r.documents
+}
+
+// ChunkText splits text into overlapping chunks for embedding
+func ChunkText(text string, cfg ChunkConfig) []string {
+	if text == "" {
+		return nil
+	}
+
+	var chunks []string
+	content := text
+
+	// Split by paragraphs first
+	segments := strings.Split(content, "\n\n")
+	
+	var currentChunk string
+	for _, segment := range segments {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+
+		// If adding this segment exceeds chunk size
+		if len(currentChunk)+len(segment) > cfg.ChunkSize && currentChunk != "" {
+			chunks = append(chunks, strings.TrimSpace(currentChunk))
+			
+			// Start new chunk with overlap
+			overlapLen := cfg.ChunkOverlap
+			if overlapLen > len(currentChunk) {
+				overlapLen = len(currentChunk)
+			}
+			currentChunk = currentChunk[len(currentChunk)-overlapLen:] + "\n\n" + segment
+		} else {
+			if currentChunk != "" {
+				currentChunk += "\n\n"
+			}
+			currentChunk += segment
+		}
+	}
+
+	if currentChunk != "" {
+		chunks = append(chunks, strings.TrimSpace(currentChunk))
+	}
+
+	return chunks
+}
+
+// SyncNotionToChroma syncs all Notion pages to Chroma vector store with incremental updates
+func SyncNotionToChroma(llmClient *LLMClient) (int, error) {
+	chromaConfig := conf.GetChromaConfig()
+	if chromaConfig == nil {
+		return 0, fmt.Errorf("Chroma config not found")
+	}
+
+	chromaStore := NewChromaStore(chromaConfig.Host, chromaConfig.Port, chromaConfig.Collection)
+	if err := chromaStore.Connect(llmClient); err != nil {
+		return 0, fmt.Errorf("failed to connect to Chroma: %w", err)
+	}
+
+	notionKey := conf.GetNotionAPIKey()
+	if notionKey == "" {
+		return 0, fmt.Errorf("Notion API key is not set")
+	}
+
+	// Load sync state
+	if err := LoadSyncState(); err != nil {
+		log.Printf("[WARNING] Failed to load sync state: %v", err)
+	}
+
+	log.Printf("[INFO] Syncing Notion pages to Chroma (incremental=%v)...", true)
+	pageIDs, err := searchNotionPages(notionKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to search Notion pages: %w", err)
+	}
+
+	log.Printf("[INFO] Found %d Notion pages to check", len(pageIDs))
+
+	// Get existing Chroma documents to compare
+	existingDocs, err := chromaStore.GetDocumentCount()
+	if err != nil {
+		log.Printf("[WARNING] Could not get existing doc count: %v", err)
+	}
+
+	// Check each page for changes
+	pagesToSync := make([]string, 0)
+	for _, pageID := range pageIDs {
+		checksum := computePageChecksum(pageID, notionKey)
+		if shouldSkipDocument(pageID, checksum) {
+			log.Printf("[INFO] Skipping unchanged page: %s", pageID)
+			continue
+		}
+		pagesToSync = append(pagesToSync, pageID)
+	}
+
+	if len(pagesToSync) == 0 {
+		log.Printf("[INFO] All documents up to date, nothing to sync")
+		return 0, nil
+	}
+
+	log.Printf("[INFO] %d pages changed, syncing to Chroma...", len(pagesToSync))
+
+	var syncedDocs []schema.Document
+	for _, pageID := range pagesToSync {
+		doc, err := fetchNotionPageAsDocument(pageID, notionKey)
+		if err != nil {
+			log.Printf("[WARNING] Failed to fetch page %s: %v", pageID, err)
+			syncState.FailedDocuments = append(syncState.FailedDocuments, pageID)
+			continue
+		}
+
+		// Chunk the document content
+		chunks := ChunkText(doc.PageContent, defaultChunkConfig)
+		
+		// Create a document for each chunk
+		for i, chunk := range chunks {
+			chunkDoc := schema.Document{
+				PageContent: chunk,
+				Metadata: map[string]interface{}{
+					"source":     "notion",
+					"page_id":    pageID,
+					"title":      doc.Metadata["title"],
+					"chunk_index": i,
+					"total_chunks": len(chunks),
+				},
+			}
+			syncedDocs = append(syncedDocs, chunkDoc)
+		}
+
+		// Update sync state
+		checksum := computePageChecksum(pageID, notionKey)
+		syncState.SyncedDocuments[pageID] = checksum
+		
+		// Remove from failed if it was there
+		for i, id := range syncState.FailedDocuments {
+			if id == pageID {
+				syncState.FailedDocuments = append(syncState.FailedDocuments[:i], syncState.FailedDocuments[i+1:]...)
+				break
+			}
+		}
+
+		log.Printf("[INFO] Chunked %s into %d pieces for sync", doc.Metadata["title"], len(chunks))
+	}
+
+	if len(syncedDocs) > 0 {
+		if err := chromaStore.AddDocuments(context.Background(), syncedDocs); err != nil {
+			return 0, fmt.Errorf("failed to add documents to Chroma: %w", err)
+		}
+	}
+
+	// Save sync state
+	if err := SaveSyncState(); err != nil {
+		log.Printf("[WARNING] Failed to save sync state: %v", err)
+	}
+
+	log.Printf("[INFO] Successfully synced %d documents (chunks: %d) to Chroma", len(pagesToSync), len(syncedDocs))
+	return len(pagesToSync), nil
+}
+
+// computePageChecksum computes a checksum for change detection
+func computePageChecksum(pageID, apiKey string) string {
+	client := &http.Client{}
+
+	// Get page metadata
+	pageReq, _ := http.NewRequest("GET", fmt.Sprintf("https://api.notion.com/v1/pages/%s", pageID), nil)
+	pageReq.Header.Set("Authorization", "Bearer "+apiKey)
+	pageReq.Header.Set("Notion-Version", "2025-09-03")
+
+	pageResp, err := client.Do(pageReq)
+	if err != nil {
+		return ""
+	}
+	defer pageResp.Body.Close()
+
+	// Get content
+	var content strings.Builder
+	fetchBlockChildren(pageID, apiKey, &content, 0)
+
+	// Combine last_edited + content for checksum
+	pageBody, _ := io.ReadAll(pageResp.Body)
+	var pageData PageResponse
+	json.Unmarshal(pageBody, &pageData)
+	
+	lastEdited := pageData.LastEdited
+	
+	checksumInput := lastEdited + content.String()
+	return ComputeChecksum(checksumInput)
 }
