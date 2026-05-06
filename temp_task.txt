@@ -1,0 +1,12 @@
+Optimize backend/main.go with these requirements:
+
+1. Use MiniMax-M2.7 model (not M2.5)
+2. Keep using langchaingo framework
+3. Add logging:
+   - Log LLM input (user message) when received
+   - Log LLM output (AI response) before returning
+   - Use standard Go log package with timestamps
+   - Log to both console and a file (logs/app.log)
+4. Keep existing functionality: POST /api/chat, serve frontend static files
+
+Make sure the code compiles with: CGO_ENABLED=0 go build -o server ./backend/
