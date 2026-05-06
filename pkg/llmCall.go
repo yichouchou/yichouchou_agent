@@ -6,7 +6,6 @@ import (
 	"github.com/yichouchou/yichouchou_agent/conf"
 	"os"
 
-	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
@@ -19,7 +18,7 @@ type LLMConfig struct {
 
 // LLMClient wraps langchaingo LLM for MiniMax API
 type LLMClient struct {
-	client llms.LLM
+	client *openai.LLM
 	model  string
 }
 
