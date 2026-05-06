@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/yichouchou/yichouchou_agent/conf"
 )
@@ -38,7 +37,7 @@ func NewMiniMaxEmbedder(apiKey string) (*MiniMaxEmbedder, error) {
 }
 
 // EmbedTexts generates embeddings for multiple texts
-func (e *MiniMaxEmbedder) EmbedTexts(texts []string) ([][]float64, error) {
+func (e *MiniMaxEmbedder) EmbedTexts(texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -89,9 +88,12 @@ func (e *MiniMaxEmbedder) EmbedTexts(texts []string) ([][]float64, error) {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	embeddings := make([][]float64, len(result.Data))
+	embeddings := make([][]float32, len(result.Data))
 	for i, d := range result.Data {
-		embeddings[i] = d.Embedding
+		embeddings[i] = make([]float32, len(d.Embedding))
+		for j, v := range d.Embedding {
+			embeddings[i][j] = float32(v)
+		}
 	}
 
 	return embeddings, nil
@@ -100,6 +102,23 @@ func (e *MiniMaxEmbedder) EmbedTexts(texts []string) ([][]float64, error) {
 // Dimension returns the embedding dimension
 func (e *MiniMaxEmbedder) Dimension() int {
 	return e.dim
+}
+
+// EmbedDocuments implements the embeddings.Embedder interface
+func (e *MiniMaxEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error) {
+	return e.EmbedTexts(texts)
+}
+
+// EmbedQuery implements the embeddings.Embedder interface
+func (e *MiniMaxEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	embeddings, err := e.EmbedTexts([]string{text})
+	if err != nil {
+		return nil, err
+	}
+	if len(embeddings) == 0 {
+		return nil, fmt.Errorf("no embedding returned")
+	}
+	return embeddings[0], nil
 }
 
 // CreateMiniMaxEmbedder is a helper to create embedder from config

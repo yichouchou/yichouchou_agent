@@ -14,6 +14,7 @@ type Config struct {
 	MinimaxAPIKey string       `yaml:"minimax_apikey"`
 	NotionAPIKey  string       `yaml:"notion_apikey"`
 	Chroma        ChromaConfig `yaml:"chroma"`
+	MarkdownDir   string       `yaml:"markdown_dir"`
 }
 
 type ChromaConfig struct {
@@ -131,4 +132,14 @@ func GetChromaConfig() *ChromaConfig {
 		return &cfg.Chroma
 	}
 	return nil
+}
+
+func GetMarkdownDir() string {
+	if dir := os.Getenv("MARKDOWN_DIR"); dir != "" {
+		return dir
+	}
+	if cfg := GetConfig(); cfg != nil && cfg.MarkdownDir != "" {
+		return cfg.MarkdownDir
+	}
+	return ""
 }

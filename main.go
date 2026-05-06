@@ -48,19 +48,18 @@ func main() {
 		log.Printf("[INFO] Notion RAG initialized with %d pages", rag.GetPageCount())
 	}
 
+	markdownLoader, markdownErr := pkg.InitMarkdownLoader()
+	if markdownErr != nil {
+		log.Printf("[WARNING] Failed to initialize Markdown loader: %v", markdownErr)
+	} else {
+		log.Printf("[INFO] Markdown loader initialized")
+	}
+
 	chromaStore, chromaErr := pkg.InitChromaStore()
 	if chromaErr != nil {
 		log.Printf("[WARNING] Failed to initialize Chroma store: %v", chromaErr)
 	} else {
 		log.Printf("[INFO] Chroma store initialized")
-	}
-
-	hybridRAG := pkg.NewHybridRAG()
-	if rag != nil {
-		hybridRAG.SetNotionRAG(rag)
-	}
-	if chromaStore != nil {
-		hybridRAG.SetChroma(chromaStore)
 	}
 
 	llmClient, llmErr := pkg.InitLLM()
@@ -69,12 +68,24 @@ func main() {
 	}
 	log.Printf("[INFO] LLM initialized with model: %s", llmClient.GetModel())
 
+	hybridRAG := pkg.NewHybridRAG()
+	if rag != nil {
+		hybridRAG.SetNotionRAG(rag)
+	}
+	if chromaStore != nil {
+		hybridRAG.SetChroma(chromaStore)
+	}
+	if markdownLoader != nil {
+		hybridRAG.SetMarkdownLoader(markdownLoader)
+	}
+	hybridRAG.SetLLMClient(llmClient)
+
 	if rag != nil {
 		rag.SetLLMClient(llmClient)
 	}
 
-	notionCount, chromaCount := hybridRAG.GetSourceCount()
-	log.Printf("[INFO] Hybrid RAG ready - Notion: %d, Chroma: %d", notionCount, chromaCount)
+	notionCount, chromaCount, markdownCount := hybridRAG.GetSourceCount()
+	log.Printf("[INFO] Hybrid RAG ready - Notion: %d, Chroma: %d, Markdown: %d", notionCount, chromaCount, markdownCount)
 
 	backend.InitHandler(hybridRAG, llmClient)
 

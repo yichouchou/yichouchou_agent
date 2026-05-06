@@ -55,7 +55,7 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 	answer, err := hybridRAG.Query(ctx, req.Message)
 	if err != nil {
 		log.Printf("[ERROR] RAG query failed: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "抱歉，系统内部错误，请稍后重试", http.StatusInternalServerError)
 		return
 	}
 

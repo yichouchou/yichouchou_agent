@@ -1,0 +1,31 @@
+name: superpowers
+version: "1.0.0"
+description: "超级能力扩展包，增强AI开发能力"
+author: "obraz"
+repository: "https://github.com/obraz/superpowers"
+
+capabilities:
+  - name: code_analysis
+    description: "深度代码分析"
+    enabled: true
+  
+  - name: requirement_analysis
+    description: "需求分析与拆解"
+    enabled: true
+  
+  - name: auto_test
+    description: "自动测试生成"
+    enabled: true
+  
+  - name: documentation
+    description: "文档自动生成"
+    enabled: true
+  
+  - name: optimization
+    description: "代码优化建议"
+    enabled: true
+
+settings:
+  max_tokens: 8192
+  temperature: 0.7
+  debug: false
